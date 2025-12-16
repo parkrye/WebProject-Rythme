@@ -1,18 +1,20 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { socketService } from '../services/socketService';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
 import { useGameStore } from '../stores/useGameStore';
+import type { RoomMode, InstrumentType, EnsembleNotePlayPayload } from '@rhythm-game/shared';
 
 export const useSocket = () => {
   const odId = useUserStore((state) => state.odId);
   const { setRooms, setCurrentRoom, updateRoom, addPlayer, removePlayer } = useRoomStore();
   const { setPhase, setQuestionerId, setQuestionNotes, setRoundResult, setFinalResult, setEndTime } = useGameStore();
+  const ensembleNoteCallbackRef = useRef<((payload: EnsembleNotePlayPayload) => void) | null>(null);
 
   useEffect(() => {
     if (!odId) return;
 
-    const socket = socketService.connect(odId);
+    socketService.connect(odId);
 
     socketService.on('room:list', setRooms);
     socketService.on('room:created', setCurrentRoom);
@@ -37,6 +39,12 @@ export const useSocket = () => {
     socketService.on('game:roundResult', setRoundResult);
     socketService.on('game:finalResult', setFinalResult);
 
+    socketService.on('ensemble:notePlay', (payload) => {
+      if (ensembleNoteCallbackRef.current) {
+        ensembleNoteCallbackRef.current(payload);
+      }
+    });
+
     socketService.on('error', ({ code, message }) => {
       console.error(`Error [${code}]: ${message}`);
     });
@@ -52,12 +60,17 @@ export const useSocket = () => {
       socketService.off('game:playQuestion');
       socketService.off('game:roundResult');
       socketService.off('game:finalResult');
+      socketService.off('ensemble:notePlay');
       socketService.off('error');
     };
   }, [odId, setRooms, setCurrentRoom, updateRoom, addPlayer, removePlayer, setPhase, setQuestionerId, setQuestionNotes, setRoundResult, setFinalResult, setEndTime]);
 
-  const createRoom = useCallback((name: string, maxPlayers: number) => {
-    socketService.emit('room:create', { name, maxPlayers });
+  const setEnsembleNoteCallback = useCallback((callback: ((payload: EnsembleNotePlayPayload) => void) | null) => {
+    ensembleNoteCallbackRef.current = callback;
+  }, []);
+
+  const createRoom = useCallback((name: string, maxPlayers: number, mode: RoomMode) => {
+    socketService.emit('room:create', { name, maxPlayers, mode });
   }, []);
 
   const joinRoom = useCallback((roomId: string) => {
@@ -88,6 +101,10 @@ export const useSocket = () => {
     socketService.emit('room:addAI', { roomId, difficulty });
   }, []);
 
+  const playNoteInRoom = useCallback((roomId: string, note: string, instrument: InstrumentType) => {
+    socketService.emit('ensemble:playNote', { roomId, note, instrument });
+  }, []);
+
   return {
     createRoom,
     joinRoom,
@@ -97,5 +114,7 @@ export const useSocket = () => {
     submitRecording,
     submitChallenge,
     addAI,
+    playNoteInRoom,
+    setEnsembleNoteCallback,
   };
 };

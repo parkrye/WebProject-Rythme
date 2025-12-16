@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as admin from 'firebase-admin';
 import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class FirebaseService implements OnModuleInit {
@@ -8,14 +9,35 @@ export class FirebaseService implements OnModuleInit {
 
   onModuleInit() {
     if (!admin.apps.length) {
-      const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const serviceAccount = require(serviceAccountPath);
+      let credential: admin.credential.Credential;
+      let databaseURL: string;
+
+      if (process.env.FIREBASE_PRIVATE_KEY) {
+        const serviceAccount = {
+          type: 'service_account',
+          project_id: process.env.FIREBASE_PROJECT_ID,
+          private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+          client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        };
+        credential = admin.credential.cert(serviceAccount as admin.ServiceAccount);
+        databaseURL = process.env.FIREBASE_DATABASE_URL ||
+          `https://${serviceAccount.project_id}-default-rtdb.asia-southeast1.firebasedatabase.app`;
+      } else {
+        const serviceAccountPath = path.join(__dirname, '../../firebase-service-account.json');
+        if (!fs.existsSync(serviceAccountPath)) {
+          console.error('Firebase service account not found. Set environment variables or provide firebase-service-account.json');
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const serviceAccount = require(serviceAccountPath);
+        credential = admin.credential.cert(serviceAccount);
+        databaseURL = process.env.FIREBASE_DATABASE_URL ||
+          `https://${serviceAccount.project_id}-default-rtdb.asia-southeast1.firebasedatabase.app`;
+      }
 
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: process.env.FIREBASE_DATABASE_URL ||
-          `https://${serviceAccount.project_id}-default-rtdb.asia-southeast1.firebasedatabase.app`,
+        credential,
+        databaseURL,
       });
     }
 

@@ -1,14 +1,22 @@
 import { useCallback, useRef } from 'react';
-import { playNote } from '../utils/audioUtils';
+import { playNote as playNoteWithInstrument } from '../utils/audioUtils';
 import { useGameStore } from '../stores/useGameStore';
-import type { Note } from '@rhythm-game/shared';
+import { DEFAULT_INSTRUMENT, type Note, type InstrumentType } from '@rhythm-game/shared';
 
 export const usePiano = () => {
   const startTimeRef = useRef<number | null>(null);
   const { isRecording, addRecordedNote, addChallengeNote, phase } = useGameStore();
 
+  // playNote 함수 반환 (악기 지원)
+  const playNote = useCallback(
+    (note: string, duration: number = 0.5, instrument: InstrumentType = DEFAULT_INSTRUMENT) => {
+      playNoteWithInstrument(note, duration, instrument);
+    },
+    []
+  );
+
   const handleNotePress = useCallback((note: string) => {
-    playNote(note);
+    playNoteWithInstrument(note);
 
     if (!isRecording) return;
 
@@ -43,6 +51,7 @@ export const usePiano = () => {
   }, []);
 
   return {
+    playNote,
     handleNotePress,
     startRecording,
     stopRecording,

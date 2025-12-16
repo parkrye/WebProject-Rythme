@@ -1,6 +1,8 @@
 import type { Room, RoomSummary } from './room.js';
 import type { Player } from './player.js';
 import type { Note, RoundResult, FinalResult, GamePhase } from './game.js';
+import type { RoomMode } from '../constants/roomMode.js';
+import type { InstrumentType } from '../constants/instrument.js';
 
 // Client -> Server Events
 export interface ClientToServerEvents {
@@ -12,6 +14,7 @@ export interface ClientToServerEvents {
   'game:start': (payload: GameStartPayload) => void;
   'game:submitRecording': (payload: SubmitRecordingPayload) => void;
   'game:submitChallenge': (payload: SubmitChallengePayload) => void;
+  'ensemble:playNote': (payload: EnsemblePlayNotePayload) => void;
 }
 
 // Server -> Client Events
@@ -23,8 +26,10 @@ export interface ServerToClientEvents {
   'room:playerLeft': (payload: { odId: string }) => void;
   'game:phaseChanged': (payload: PhaseChangedPayload) => void;
   'game:questionReady': (payload: QuestionReadyPayload) => void;
+  'game:playQuestion': (payload: QuestionReadyPayload) => void;
   'game:roundResult': (result: RoundResult) => void;
   'game:finalResult': (result: FinalResult) => void;
+  'ensemble:notePlay': (payload: EnsembleNotePlayPayload) => void;
   'error': (payload: ErrorPayload) => void;
 }
 
@@ -32,6 +37,7 @@ export interface ServerToClientEvents {
 export interface CreateRoomPayload {
   name: string;
   maxPlayers: number;
+  mode: RoomMode;
 }
 
 export interface JoinRoomPayload {
@@ -79,4 +85,18 @@ export interface QuestionReadyPayload {
 export interface ErrorPayload {
   code: string;
   message: string;
+}
+
+// Ensemble Mode Payloads
+export interface EnsemblePlayNotePayload {
+  roomId: string;
+  note: string;
+  instrument: InstrumentType;
+}
+
+export interface EnsembleNotePlayPayload {
+  odId: string;
+  nickname: string;
+  note: string;
+  instrument: InstrumentType;
 }

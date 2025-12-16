@@ -11,7 +11,8 @@ class SocketService {
       return this.socket;
     }
 
-    this.socket = io('http://localhost:4000', {
+    const serverUrl = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+    this.socket = io(serverUrl, {
       auth: { odId },
       transports: ['websocket'],
     }) as TypedSocket;
@@ -57,7 +58,8 @@ class SocketService {
       console.error('Socket not connected');
       return;
     }
-    this.socket.on(event, callback as (...args: unknown[]) => void);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this.socket.on(event, callback as any);
   }
 
   off<K extends keyof ServerToClientEvents>(event: K): void {

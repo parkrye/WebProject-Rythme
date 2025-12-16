@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { FirebaseService } from '../../services/firebase.service';
-import type { Room, RoomSummary, Player } from '@rhythm-game/shared';
+import type { Room, RoomSummary, Player, RoomMode } from '@rhythm-game/shared';
+import { DEFAULT_ROOM_MODE } from '@rhythm-game/shared';
 
 @Injectable()
 export class RoomService {
@@ -11,6 +12,7 @@ export class RoomService {
     hostNickname: string,
     name: string,
     maxPlayers: number,
+    mode: RoomMode = DEFAULT_ROOM_MODE,
   ): Promise<Room> {
     const roomId = this.generateRoomId();
 
@@ -27,6 +29,7 @@ export class RoomService {
       roomId,
       name,
       hostId,
+      mode,
       status: 'waiting',
       maxPlayers,
       currentRound: 0,
@@ -53,6 +56,7 @@ export class RoomService {
       .map((room) => ({
         roomId: room.roomId,
         name: room.name,
+        mode: room.mode || DEFAULT_ROOM_MODE,
         playerCount: Object.keys(room.players).length,
         maxPlayers: room.maxPlayers,
         status: room.status,

@@ -18,7 +18,7 @@ export class ScoreService {
 
     const similarity =
       noteSequenceScore * SIMILARITY_WEIGHTS.NOTE_SEQUENCE +
-      timingScore * SIMILARITY_WEIGHTS.TIMING +
+      timingScore * SIMILARITY_WEIGHTS.TIMING_ACCURACY +
       countScore * SIMILARITY_WEIGHTS.NOTE_COUNT;
 
     return Math.round(similarity * 100);

@@ -1,0 +1,9 @@
+[build]
+  base = "apps/frontend"
+  command = "cd ../.. && npm install -g pnpm && pnpm install && pnpm --filter @rhythm-game/shared build && pnpm --filter frontend build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

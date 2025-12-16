@@ -21,9 +21,10 @@ import type {
   GameStartPayload,
   SubmitRecordingPayload,
   SubmitChallengePayload,
+  EnsemblePlayNotePayload,
   Note,
 } from '@rhythm-game/shared';
-import { GAME_CONFIG } from '@rhythm-game/shared';
+import { GAME_CONFIG, ROOM_MODES } from '@rhythm-game/shared';
 
 interface SocketData {
   odId: string;
@@ -90,6 +91,7 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       nickname,
       payload.name,
       payload.maxPlayers,
+      payload.mode,
     );
 
     data.roomId = room.roomId;
@@ -205,6 +207,16 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    // 합주 모드: 게임 로직 없이 바로 연주 시작
+    if (room.mode === ROOM_MODES.ENSEMBLE) {
+      await this.roomService.updateRoom(payload.roomId, { status: 'playing' });
+      const updatedRoom = await this.roomService.getRoom(payload.roomId);
+      this.server.to(payload.roomId).emit('room:updated', updatedRoom);
+      this.broadcastRoomList();
+      return;
+    }
+
+    // 게임 모드: 기존 게임 로직
     const gameState = await this.gameService.startGame(payload.roomId);
     if (!gameState) return;
 
@@ -329,6 +341,28 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       data.odId,
       payload.notes,
     );
+  }
+
+  @SubscribeMessage('ensemble:playNote')
+  async handleEnsemblePlayNote(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: EnsemblePlayNotePayload,
+  ) {
+    const data = this.socketMap.get(client.id);
+    if (!data) return;
+
+    const room = await this.roomService.getRoom(payload.roomId);
+    if (!room || room.mode !== ROOM_MODES.ENSEMBLE || room.status !== 'playing') {
+      return;
+    }
+
+    // 같은 방의 다른 플레이어들에게 노트 브로드캐스트
+    client.to(payload.roomId).emit('ensemble:notePlay', {
+      odId: data.odId,
+      nickname: data.nickname,
+      note: payload.note,
+      instrument: payload.instrument,
+    });
   }
 
   private async judgeRound(roomId: string) {

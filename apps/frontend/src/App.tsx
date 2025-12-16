@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import NicknamePage from './pages/NicknamePage';
 import LobbyPage from './pages/LobbyPage';
 import GameRoomPage from './pages/GameRoomPage';
+import SoloRoomPage from './pages/SoloRoomPage';
 import { useUserStore } from './stores/useUserStore';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -33,6 +34,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <GameRoomPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/solo"
+            element={
+              <ProtectedRoute>
+                <SoloRoomPage />
               </ProtectedRoute>
             }
           />

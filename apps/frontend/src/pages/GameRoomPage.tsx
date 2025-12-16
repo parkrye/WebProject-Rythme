@@ -9,8 +9,15 @@ import { usePiano } from '../hooks/usePiano';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
 import { useGameStore } from '../stores/useGameStore';
-import { playMelody } from '../utils/audioUtils';
-import { GAME_CONFIG } from '@rhythm-game/shared';
+import { playMelody, playNote as playNoteSound } from '../utils/audioUtils';
+import {
+  ROOM_MODES,
+  ROOM_MODE_LABELS,
+  ROOM_MODE_ICONS,
+  ROOM_MODE_THEMES,
+  DEFAULT_INSTRUMENT,
+  type InstrumentType,
+} from '@rhythm-game/shared';
 
 const PHASE_LABELS: Record<string, string> = {
   idle: '대기 중',
@@ -42,11 +49,15 @@ const GameRoomPage: React.FC = () => {
     clearChallengeNotes,
   } = useGameStore();
 
-  const { leaveRoom, setReady, startGame, submitRecording, submitChallenge, addAI } = useSocket();
-  const { handleNotePress, startRecording, stopRecording, stopChallenge, resetTimer } = usePiano();
+  const { leaveRoom, setReady, startGame, submitRecording, submitChallenge, addAI, playNoteInRoom, setEnsembleNoteCallback } = useSocket();
+  const { handleNotePress, startRecording, stopRecording, stopChallenge } = usePiano();
 
   const [isPlaying, setIsPlaying] = useState<'question' | 'winner' | null>(null);
+  const [instrument] = useState<InstrumentType>(DEFAULT_INSTRUMENT);
+  const [lastPlayedNote, setLastPlayedNote] = useState<{ nickname: string; note: string } | null>(null);
   const stopPlaybackRef = useRef<(() => void) | null>(null);
+
+  const isEnsembleMode = currentRoom?.mode === ROOM_MODES.ENSEMBLE;
 
   const isHost = currentRoom?.hostId === odId;
   const isQuestioner = questionerId === odId;
@@ -61,6 +72,25 @@ const GameRoomPage: React.FC = () => {
       navigate('/lobby');
     }
   }, [currentRoom, navigate]);
+
+  // Ensemble mode: listen for notes from other players
+  useEffect(() => {
+    if (!isEnsembleMode) {
+      setEnsembleNoteCallback(null);
+      return;
+    }
+
+    setEnsembleNoteCallback((payload) => {
+      if (payload.odId === odId) return; // Don't play own notes
+      playNoteSound(payload.note, 0.5, payload.instrument);
+      setLastPlayedNote({ nickname: payload.nickname, note: payload.note });
+      setTimeout(() => setLastPlayedNote(null), 500);
+    });
+
+    return () => {
+      setEnsembleNoteCallback(null);
+    };
+  }, [isEnsembleMode, odId, setEnsembleNoteCallback]);
 
   // listening 페이즈에서 자동 재생
   useEffect(() => {
@@ -138,6 +168,14 @@ const GameRoomPage: React.FC = () => {
     }
   }, [roomId, addAI]);
 
+  // Ensemble mode: handle note press and broadcast to others
+  const handleEnsembleNotePress = useCallback((note: string) => {
+    playNoteSound(note, 0.5, instrument);
+    if (roomId) {
+      playNoteInRoom(roomId, note, instrument);
+    }
+  }, [roomId, instrument, playNoteInRoom]);
+
   const handleStartRecording = useCallback(() => {
     clearRecordedNotes();
     startRecording();
@@ -170,39 +208,68 @@ const GameRoomPage: React.FC = () => {
     return null;
   }
 
-  const canPlay =
-    (phase === 'recording' && isQuestioner && isRecording) ||
-    (phase === 'challenging' && !isQuestioner && isRecording);
+  // In ensemble mode, everyone can play when status is "playing"
+  // In game mode, only during specific phases with recording active
+  const canPlay = isEnsembleMode
+    ? currentRoom.status === 'playing'
+    : (phase === 'recording' && isQuestioner && isRecording) ||
+      (phase === 'challenging' && !isQuestioner && isRecording);
+
+  const theme = isEnsembleMode
+    ? ROOM_MODE_THEMES[ROOM_MODES.ENSEMBLE]
+    : ROOM_MODE_THEMES[ROOM_MODES.GAME];
 
   return (
     <div className="min-h-full flex flex-col">
       {/* Header */}
-      <div className="p-4 flex justify-between items-center border-b border-surface">
-        <div>
-          <h1 className="font-medium">{currentRoom.name}</h1>
-          <p className="text-silver text-sm">
-            라운드 {currentRoom.currentRound}/{currentRoom.totalRounds}
-          </p>
+      <div className={`p-4 flex justify-between items-center border-b ${isEnsembleMode ? 'border-secondary/30' : 'border-surface'}`}>
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">
+            {isEnsembleMode ? ROOM_MODE_ICONS[ROOM_MODES.ENSEMBLE] : ROOM_MODE_ICONS[ROOM_MODES.GAME]}
+          </span>
+          <div>
+            <h1 className={`font-medium ${theme.primary}`}>{currentRoom.name}</h1>
+            {isEnsembleMode ? (
+              <p className="text-silver text-sm">
+                {ROOM_MODE_LABELS[ROOM_MODES.ENSEMBLE]}
+              </p>
+            ) : (
+              <p className="text-silver text-sm">
+                라운드 {currentRoom.currentRound}/{currentRoom.totalRounds}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-4">
-          {phase !== 'idle' && <Timer endTime={endTime} />}
+          {!isEnsembleMode && phase !== 'idle' && <Timer endTime={endTime} />}
           <Button variant="secondary" onClick={handleLeave}>
             나가기
           </Button>
         </div>
       </div>
 
-      {/* Game Phase */}
-      <div className="text-center py-4">
-        <span className="text-primary font-medium">
-          {PHASE_LABELS[phase]}
-        </span>
-        {questionerId && players[questionerId] && (
-          <span className="text-silver ml-2">
-            출제자: {players[questionerId].nickname}
+      {/* Game Phase (Game Mode only) */}
+      {!isEnsembleMode && (
+        <div className="text-center py-4">
+          <span className="text-primary font-medium">
+            {PHASE_LABELS[phase]}
           </span>
-        )}
-      </div>
+          {questionerId && players[questionerId] && (
+            <span className="text-silver ml-2">
+              출제자: {players[questionerId].nickname}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Ensemble Mode: Now Playing Indicator */}
+      {isEnsembleMode && lastPlayedNote && (
+        <div className="text-center py-2 animate-pulse">
+          <span className="text-secondary">
+            {lastPlayedNote.nickname}: {lastPlayedNote.note}
+          </span>
+        </div>
+      )}
 
       {/* Players */}
       <PlayerList
@@ -212,8 +279,8 @@ const GameRoomPage: React.FC = () => {
         winnerId={phase === 'result' ? roundResult?.winnerId : null}
       />
 
-      {/* Listening Phase */}
-      {phase === 'listening' && (
+      {/* Listening Phase (Game Mode only) */}
+      {!isEnsembleMode && phase === 'listening' && (
         <div className="card mx-4 p-4 text-center">
           <p className="text-primary font-medium mb-2">출제자의 연주를 듣고 있습니다...</p>
           <div className="flex justify-center">
@@ -222,8 +289,8 @@ const GameRoomPage: React.FC = () => {
         </div>
       )}
 
-      {/* Result Display */}
-      {roundResult && phase === 'result' && (
+      {/* Result Display (Game Mode only) */}
+      {!isEnsembleMode && roundResult && phase === 'result' && (
         <div className="card mx-4 p-4">
           <div className="text-center mb-4">
             <p className="text-primary font-medium text-lg">
@@ -254,8 +321,8 @@ const GameRoomPage: React.FC = () => {
         </div>
       )}
 
-      {/* Final Result */}
-      {finalResult && (
+      {/* Final Result (Game Mode only) */}
+      {!isEnsembleMode && finalResult && (
         <div className="card mx-4 p-4">
           <h2 className="text-primary font-display text-xl text-center mb-4">
             최종 결과
@@ -278,64 +345,107 @@ const GameRoomPage: React.FC = () => {
 
       {/* Piano */}
       <div className="flex-1 flex flex-col justify-end">
-        <PianoKeyboard onNotePress={handleNotePress} disabled={!canPlay} />
+        <PianoKeyboard
+          onNotePress={isEnsembleMode ? handleEnsembleNotePress : handleNotePress}
+          disabled={!canPlay}
+        />
       </div>
 
       {/* Actions */}
       <div className="p-4 space-y-3">
-        {currentRoom.status === 'waiting' && (
+        {/* Ensemble Mode Actions */}
+        {isEnsembleMode && (
           <>
-            {isHost ? (
+            {currentRoom.status === 'waiting' ? (
               <>
-                <div className="flex gap-2">
+                {isHost ? (
                   <Button
-                    className="flex-1"
+                    className="w-full"
                     onClick={handleStartGame}
-                    disabled={playerCount < 2 || !allReady}
+                    disabled={playerCount < 1}
                   >
-                    게임 시작
+                    연주 시작
                   </Button>
-                  {canAddAI && (
-                    <Button
-                      variant="secondary"
-                      onClick={handleAddAI}
-                    >
-                      AI 추가
-                    </Button>
-                  )}
-                </div>
+                ) : (
+                  <p className="text-center text-silver">
+                    방장이 연주를 시작할 때까지 대기 중...
+                  </p>
+                )}
                 <p className="text-silver text-xs text-center">
                   {playerCount}/{maxPlayers}명 참가 중
                 </p>
               </>
             ) : (
-              <Button
-                className="w-full"
-                variant={players[odId!]?.isReady ? 'secondary' : 'primary'}
-                onClick={handleReady}
-              >
-                {players[odId!]?.isReady ? '준비 취소' : '준비'}
-              </Button>
+              <div className="text-center">
+                <p className={`${theme.primary} font-medium`}>
+                  자유롭게 연주하세요
+                </p>
+                <p className="text-silver text-xs mt-1">
+                  다른 플레이어의 연주가 실시간으로 들립니다
+                </p>
+              </div>
             )}
           </>
         )}
 
-        {phase === 'recording' && isQuestioner && (
-          <Button
-            className="w-full"
-            onClick={isRecording ? handleStopRecording : handleStartRecording}
-          >
-            {isRecording ? `녹음 완료 (${recordedNotes.length}음)` : '녹음 시작'}
-          </Button>
-        )}
+        {/* Game Mode Actions */}
+        {!isEnsembleMode && (
+          <>
+            {currentRoom.status === 'waiting' && (
+              <>
+                {isHost ? (
+                  <>
+                    <div className="flex gap-2">
+                      <Button
+                        className="flex-1"
+                        onClick={handleStartGame}
+                        disabled={playerCount < 2 || !allReady}
+                      >
+                        게임 시작
+                      </Button>
+                      {canAddAI && (
+                        <Button
+                          variant="secondary"
+                          onClick={handleAddAI}
+                        >
+                          AI 추가
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-silver text-xs text-center">
+                      {playerCount}/{maxPlayers}명 참가 중
+                    </p>
+                  </>
+                ) : (
+                  <Button
+                    className="w-full"
+                    variant={players[odId!]?.isReady ? 'secondary' : 'primary'}
+                    onClick={handleReady}
+                  >
+                    {players[odId!]?.isReady ? '준비 취소' : '준비'}
+                  </Button>
+                )}
+              </>
+            )}
 
-        {phase === 'challenging' && !isQuestioner && (
-          <Button
-            className="w-full"
-            onClick={isRecording ? handleStopChallenge : handleStartChallenge}
-          >
-            {isRecording ? `제출 (${challengeNotes.length}음)` : '녹음 시작'}
-          </Button>
+            {phase === 'recording' && isQuestioner && (
+              <Button
+                className="w-full"
+                onClick={isRecording ? handleStopRecording : handleStartRecording}
+              >
+                {isRecording ? `녹음 완료 (${recordedNotes.length}음)` : '녹음 시작'}
+              </Button>
+            )}
+
+            {phase === 'challenging' && !isQuestioner && (
+              <Button
+                className="w-full"
+                onClick={isRecording ? handleStopChallenge : handleStartChallenge}
+              >
+                {isRecording ? `제출 (${challengeNotes.length}음)` : '녹음 시작'}
+              </Button>
+            )}
+          </>
         )}
       </div>
     </div>
