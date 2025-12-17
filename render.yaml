@@ -23,7 +23,7 @@ services:
         sync: false
 
   - type: static
-    name: rythme-piano-frontend
+    name: webproject-parkrye-rythme-game
     buildCommand: npm install -g pnpm && pnpm install && pnpm --filter @rhythm-game/shared build && pnpm --filter frontend build
     staticPublishPath: apps/frontend/dist
     pullRequestPreviewsEnabled: true
