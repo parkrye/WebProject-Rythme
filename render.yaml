@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: rhythm-game-backend
+    name: rythme-piano-backend
     runtime: node
     region: singapore
     plan: free
@@ -23,7 +23,7 @@ services:
         sync: false
 
   - type: static
-    name: rhythm-game-frontend
+    name: rythme-piano-frontend
     buildCommand: npm install -g pnpm && pnpm install && pnpm --filter @rhythm-game/shared build && pnpm --filter frontend build
     staticPublishPath: apps/frontend/dist
     pullRequestPreviewsEnabled: true
