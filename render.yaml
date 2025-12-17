@@ -21,3 +21,20 @@ services:
         sync: false
       - key: FIREBASE_CLIENT_EMAIL
         sync: false
+
+  - type: static
+    name: rhythm-game-frontend
+    buildCommand: npm install -g pnpm && pnpm install && pnpm --filter @rhythm-game/shared build && pnpm --filter frontend build
+    staticPublishPath: apps/frontend/dist
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SERVER_URL
+        sync: false
