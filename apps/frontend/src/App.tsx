@@ -6,6 +6,7 @@ import GameRoomPage from './pages/GameRoomPage';
 import SoloRoomPage from './pages/SoloRoomPage';
 import { useUserStore } from './stores/useUserStore';
 import { initializeFirebase } from './config/firebase';
+import { useVersionCheck } from './hooks/useVersionCheck';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const nickname = useUserStore((state) => state.nickname);
@@ -18,6 +19,9 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const App: React.FC = () => {
+  // 버전 체크 - 새 빌드 감지 시 자동 새로고침
+  useVersionCheck();
+
   useEffect(() => {
     // Firebase 초기화
     initializeFirebase();

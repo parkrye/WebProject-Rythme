@@ -7,3 +7,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// 빌드 버전 전역 변수
+declare const __BUILD_VERSION__: string;
