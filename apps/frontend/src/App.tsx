@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import NicknamePage from './pages/NicknamePage';
 import LobbyPage from './pages/LobbyPage';
 import GameRoomPage from './pages/GameRoomPage';
 import SoloRoomPage from './pages/SoloRoomPage';
 import { useUserStore } from './stores/useUserStore';
+import { initializeFirebase } from './config/firebase';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const nickname = useUserStore((state) => state.nickname);
@@ -16,6 +18,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    // Firebase 초기화
+    initializeFirebase();
+  }, []);
+
   return (
     <BrowserRouter>
       <div className="min-h-full bg-background">

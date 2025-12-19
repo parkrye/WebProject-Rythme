@@ -5,6 +5,7 @@ import Input from '../components/common/Input';
 import { useSocket } from '../hooks/useSocket';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
+import { useFirebaseRooms } from '../hooks/useFirebaseRooms';
 import {
   GAME_CONFIG,
   ROOM_MODES,
@@ -26,6 +27,9 @@ const LobbyPage: React.FC = () => {
   const nickname = useUserStore((state) => state.nickname);
   const { rooms, currentRoom } = useRoomStore();
   const { createRoom, joinRoom } = useSocket();
+
+  // Firebase Realtime으로 방 목록 실시간 구독
+  useFirebaseRooms();
 
   useEffect(() => {
     if (currentRoom) {

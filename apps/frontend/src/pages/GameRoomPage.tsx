@@ -9,6 +9,8 @@ import { usePiano } from '../hooks/usePiano';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
 import { useGameStore } from '../stores/useGameStore';
+import { useFirebaseRoom } from '../hooks/useFirebaseRooms';
+import { useFirebaseGameSync } from '../hooks/useFirebaseGame';
 import { playMelody, playNote as playNoteSound } from '../utils/audioUtils';
 import {
   ROOM_MODES,
@@ -34,6 +36,10 @@ const GameRoomPage: React.FC = () => {
 
   const odId = useUserStore((state) => state.odId);
   const { currentRoom, setCurrentRoom } = useRoomStore();
+
+  // Firebase Realtime으로 방 정보와 게임 상태 실시간 구독
+  useFirebaseRoom(roomId || null);
+  useFirebaseGameSync(roomId || null);
   const {
     phase,
     questionerId,
