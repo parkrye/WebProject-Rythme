@@ -5,9 +5,9 @@
 | 환경 | URL |
 |------|-----|
 | **게임 접속** | https://webproject-parkrye-rythme-game.onrender.com |
-| 백엔드 서버 | https://rythme-piano-backend.onrender.com |
 
 > 다른 기기나 네트워크에서 위 URL로 접속하면 같은 방에서 함께 플레이할 수 있습니다.
+> Firebase Realtime Database를 통해 실시간 동기화됩니다.
 
 ---
 
@@ -21,8 +21,9 @@
 | 영역 | 기술 |
 |------|------|
 | Frontend | React 18, Vite, Tailwind CSS |
-| Backend | NestJS, Socket.io |
+| Backend | NestJS (REST API) |
 | Database | Firebase Realtime Database |
+| Realtime | Firebase Realtime Database |
 | Language | TypeScript |
 | Package Manager | pnpm (Monorepo) |
 
