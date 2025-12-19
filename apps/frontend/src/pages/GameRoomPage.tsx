@@ -4,14 +4,16 @@ import Button from '../components/common/Button';
 import PianoKeyboard from '../components/game/PianoKeyboard';
 import PlayerList from '../components/game/PlayerList';
 import Timer from '../components/game/Timer';
-import { useSocket } from '../hooks/useSocket';
 import { usePiano } from '../hooks/usePiano';
+import { useHostGameLogic } from '../hooks/useHostGameLogic';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
 import { useGameStore } from '../stores/useGameStore';
 import { useFirebaseRoom } from '../hooks/useFirebaseRooms';
 import { useFirebaseGameSync } from '../hooks/useFirebaseGame';
+import { firebaseRealtimeService } from '../services/firebaseRealtimeService';
 import { playMelody, playNote as playNoteSound } from '../utils/audioUtils';
+import { calculateSimilarity } from '../utils/soloAI';
 import {
   ROOM_MODES,
   ROOM_MODE_LABELS,
@@ -35,6 +37,7 @@ const GameRoomPage: React.FC = () => {
   const navigate = useNavigate();
 
   const odId = useUserStore((state) => state.odId);
+  const nickname = useUserStore((state) => state.nickname);
   const { currentRoom, setCurrentRoom } = useRoomStore();
 
   // Firebase Realtime으로 방 정보와 게임 상태 실시간 구독
@@ -55,16 +58,9 @@ const GameRoomPage: React.FC = () => {
     clearChallengeNotes,
   } = useGameStore();
 
-  const { leaveRoom, setReady, startGame, submitRecording, submitChallenge, addAI, playNoteInRoom, setEnsembleNoteCallback } = useSocket();
   const { handleNotePress, startRecording, stopRecording, stopChallenge } = usePiano();
 
-  const [isPlaying, setIsPlaying] = useState<'question' | 'winner' | null>(null);
-  const [instrument] = useState<InstrumentType>(DEFAULT_INSTRUMENT);
-  const [lastPlayedNote, setLastPlayedNote] = useState<{ nickname: string; note: string } | null>(null);
-  const stopPlaybackRef = useRef<(() => void) | null>(null);
-
   const isEnsembleMode = currentRoom?.mode === ROOM_MODES.ENSEMBLE;
-
   const isHost = currentRoom?.hostId === odId;
   const isQuestioner = questionerId === odId;
   const players = currentRoom?.players || {};
@@ -73,30 +69,43 @@ const GameRoomPage: React.FC = () => {
   const canAddAI = isHost && playerCount < maxPlayers && currentRoom?.status === 'waiting';
   const allReady = Object.values(players).every((p) => p.isReady || p.odId === currentRoom?.hostId);
 
+  // 호스트 게임 로직 훅
+  const { handleStartGame: hostStartGame } = useHostGameLogic({
+    roomId: roomId || '',
+    isHost,
+  });
+
+  const [isPlaying, setIsPlaying] = useState<'question' | 'winner' | null>(null);
+  const [instrument] = useState<InstrumentType>(DEFAULT_INSTRUMENT);
+  const [lastPlayedNote, setLastPlayedNote] = useState<{ nickname: string; note: string } | null>(null);
+  const stopPlaybackRef = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     if (!currentRoom) {
       navigate('/lobby');
     }
   }, [currentRoom, navigate]);
 
-  // Ensemble mode: listen for notes from other players
+  // Ensemble mode: listen for notes from other players via Firebase
   useEffect(() => {
-    if (!isEnsembleMode) {
-      setEnsembleNoteCallback(null);
+    if (!isEnsembleMode || !roomId || !odId) {
       return;
     }
 
-    setEnsembleNoteCallback((payload) => {
-      if (payload.odId === odId) return; // Don't play own notes
-      playNoteSound(payload.note, 0.5, payload.instrument);
-      setLastPlayedNote({ nickname: payload.nickname, note: payload.note });
-      setTimeout(() => setLastPlayedNote(null), 500);
-    });
+    const unsubscribe = firebaseRealtimeService.subscribeToEnsembleNotes(
+      roomId,
+      odId,
+      (payload) => {
+        playNoteSound(payload.note, 0.5, payload.instrument);
+        setLastPlayedNote({ nickname: payload.nickname, note: payload.note });
+        setTimeout(() => setLastPlayedNote(null), 500);
+      }
+    );
 
     return () => {
-      setEnsembleNoteCallback(null);
+      unsubscribe();
     };
-  }, [isEnsembleMode, odId, setEnsembleNoteCallback]);
+  }, [isEnsembleMode, roomId, odId]);
 
   // listening 페이즈에서 자동 재생
   useEffect(() => {
@@ -146,41 +155,41 @@ const GameRoomPage: React.FC = () => {
     stopPlaybackRef.current = playMelody(roundResult.winnerNotes, () => setIsPlaying(null));
   }, [isPlaying, roundResult]);
 
-  const handleLeave = useCallback(() => {
-    if (roomId) {
-      leaveRoom(roomId);
+  const handleLeave = useCallback(async () => {
+    if (roomId && odId) {
+      await firebaseRealtimeService.leaveRoom(roomId, odId);
       setCurrentRoom(null);
       navigate('/lobby');
     }
-  }, [roomId, leaveRoom, setCurrentRoom, navigate]);
+  }, [roomId, odId, setCurrentRoom, navigate]);
 
-  const handleReady = useCallback(() => {
+  const handleReady = useCallback(async () => {
     if (!roomId || !odId) return;
     const player = players[odId];
     if (player) {
-      setReady(roomId, !player.isReady);
+      await firebaseRealtimeService.setReady(roomId, odId, !player.isReady);
     }
-  }, [roomId, odId, players, setReady]);
+  }, [roomId, odId, players]);
 
   const handleStartGame = useCallback(() => {
-    if (roomId) {
-      startGame(roomId);
+    if (isHost) {
+      hostStartGame();
     }
-  }, [roomId, startGame]);
+  }, [isHost, hostStartGame]);
 
-  const handleAddAI = useCallback(() => {
+  const handleAddAI = useCallback(async () => {
     if (roomId) {
-      addAI(roomId, 'easy');
+      await firebaseRealtimeService.addAI(roomId, 'easy');
     }
-  }, [roomId, addAI]);
+  }, [roomId]);
 
-  // Ensemble mode: handle note press and broadcast to others
-  const handleEnsembleNotePress = useCallback((note: string) => {
+  // Ensemble mode: handle note press and broadcast to others via Firebase
+  const handleEnsembleNotePress = useCallback(async (note: string) => {
     playNoteSound(note, 0.5, instrument);
-    if (roomId) {
-      playNoteInRoom(roomId, note, instrument);
+    if (roomId && odId && nickname) {
+      await firebaseRealtimeService.playEnsembleNote(roomId, odId, nickname, note, instrument);
     }
-  }, [roomId, instrument, playNoteInRoom]);
+  }, [roomId, odId, nickname, instrument]);
 
   const handleStartRecording = useCallback(() => {
     clearRecordedNotes();
@@ -188,13 +197,13 @@ const GameRoomPage: React.FC = () => {
     setIsRecording(true);
   }, [clearRecordedNotes, startRecording, setIsRecording]);
 
-  const handleStopRecording = useCallback(() => {
+  const handleStopRecording = useCallback(async () => {
     const notes = stopRecording();
     setIsRecording(false);
-    if (roomId && notes.length > 0) {
-      submitRecording(roomId, notes);
+    if (roomId && odId && notes.length > 0) {
+      await firebaseRealtimeService.submitRecording(roomId, odId, notes);
     }
-  }, [roomId, stopRecording, setIsRecording, submitRecording]);
+  }, [roomId, odId, stopRecording, setIsRecording]);
 
   const handleStartChallenge = useCallback(() => {
     clearChallengeNotes();
@@ -202,13 +211,23 @@ const GameRoomPage: React.FC = () => {
     setIsRecording(true);
   }, [clearChallengeNotes, startRecording, setIsRecording]);
 
-  const handleStopChallenge = useCallback(() => {
+  const handleStopChallenge = useCallback(async () => {
     const notes = stopChallenge();
     setIsRecording(false);
-    if (roomId && notes.length > 0) {
-      submitChallenge(roomId, notes);
+    if (roomId && odId && notes.length > 0) {
+      // 유사도 계산
+      const questionNotesWithInstrument = questionNotes.map((n) => ({
+        ...n,
+        instrument: 'piano' as const,
+      }));
+      const challengeNotesWithInstrument = notes.map((n) => ({
+        ...n,
+        instrument: 'piano' as const,
+      }));
+      const result = calculateSimilarity(questionNotesWithInstrument, challengeNotesWithInstrument);
+      await firebaseRealtimeService.submitChallenge(roomId, odId, notes, result.total);
     }
-  }, [roomId, stopChallenge, setIsRecording, submitChallenge]);
+  }, [roomId, odId, questionNotes, stopChallenge, setIsRecording]);
 
   if (!currentRoom) {
     return null;

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
-import { useSocket } from '../hooks/useSocket';
 import { useUserStore } from '../stores/useUserStore';
 import { useRoomStore } from '../stores/useRoomStore';
 import { useFirebaseRooms } from '../hooks/useFirebaseRooms';
+import { firebaseRealtimeService } from '../services/firebaseRealtimeService';
 import {
   GAME_CONFIG,
   ROOM_MODES,
@@ -24,9 +24,9 @@ const LobbyPage: React.FC = () => {
   const [roomMode, setRoomMode] = useState<RoomMode>(DEFAULT_ROOM_MODE);
 
   const navigate = useNavigate();
+  const odId = useUserStore((state) => state.odId);
   const nickname = useUserStore((state) => state.nickname);
-  const { rooms, currentRoom } = useRoomStore();
-  const { createRoom, joinRoom } = useSocket();
+  const { rooms, currentRoom, setCurrentRoom } = useRoomStore();
 
   // Firebase Realtime으로 방 목록 실시간 구독
   useFirebaseRooms();
@@ -37,19 +37,34 @@ const LobbyPage: React.FC = () => {
     }
   }, [currentRoom, navigate]);
 
-  const handleCreateRoom = (e: React.FormEvent) => {
+  const handleCreateRoom = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!roomName.trim()) return;
+    if (!roomName.trim() || !odId || !nickname) return;
 
-    createRoom(roomName.trim(), maxPlayers, roomMode);
+    const room = await firebaseRealtimeService.createRoom(
+      odId,
+      nickname,
+      roomName.trim(),
+      maxPlayers,
+      roomMode
+    );
+    setCurrentRoom(room);
     setShowCreateModal(false);
     setRoomName('');
     setRoomMode(DEFAULT_ROOM_MODE);
-  };
+  }, [roomName, odId, nickname, maxPlayers, roomMode, setCurrentRoom]);
 
-  const handleJoinRoom = (roomId: string) => {
-    joinRoom(roomId);
-  };
+  const handleJoinRoom = useCallback(async (roomId: string) => {
+    if (!odId || !nickname) return;
+
+    const player = await firebaseRealtimeService.joinRoom(roomId, odId, nickname);
+    if (player) {
+      const room = await firebaseRealtimeService.getRoom(roomId);
+      if (room) {
+        setCurrentRoom(room);
+      }
+    }
+  }, [odId, nickname, setCurrentRoom]);
 
   const handleSoloRoom = () => {
     navigate('/solo');
