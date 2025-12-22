@@ -26,6 +26,7 @@ import type {
   RoundResult,
   FinalResult,
   InstrumentType,
+  SimilarityDetails,
 } from '@rhythm-game/shared';
 import { calculateTotalTurns, ROOM_MODES } from '@rhythm-game/shared';
 
@@ -137,7 +138,7 @@ class FirebaseRealtimeService {
   // 도전 결과 실시간 구독
   subscribeToChallenges(
     roomId: string,
-    callback: SubscriptionCallback<Record<string, { odId: string; notes: { note: string; timestamp: number }[]; similarity: number }>>
+    callback: SubscriptionCallback<Record<string, Challenge>>
   ): () => void {
     const challengesRef = this.getRef(`rooms/${roomId}/challenges`);
 
@@ -305,14 +306,26 @@ class FirebaseRealtimeService {
     const playersSnapshot = await get(this.getRef(`rooms/${roomId}/players`));
     const players = playersSnapshot.val();
 
-    if (!players || Object.keys(players).length === 0) {
-      // 아무도 없으면 방 삭제
+    // 실제 플레이어만 카운팅 (AI 제외)
+    const realPlayers = players
+      ? Object.values(players as Record<string, Player>).filter((p) => !p.isAI)
+      : [];
+
+    if (!players || Object.keys(players).length === 0 || realPlayers.length === 0) {
+      // 아무도 없거나 AI만 남으면 방 삭제
       await remove(roomRef);
     } else if (room.hostId === odId) {
-      // 호스트가 나가면 다음 사람에게 호스트 위임
-      const newHostId = Object.keys(players)[0];
-      await update(roomRef, { hostId: newHostId });
+      // 호스트가 나가면 실제 플레이어 중에서 호스트 위임
+      const newHost = realPlayers[0];
+      if (newHost) {
+        await update(roomRef, { hostId: newHost.odId });
+      }
     }
+  }
+
+  // AI 플레이어 제거
+  async removeAI(roomId: string, aiId: string): Promise<void> {
+    await remove(this.getRef(`rooms/${roomId}/players/${aiId}`));
   }
 
   // 준비 상태 토글
@@ -395,12 +408,19 @@ class FirebaseRealtimeService {
   }
 
   // 도전 제출
-  async submitChallenge(roomId: string, odId: string, notes: Note[], similarity: number): Promise<void> {
+  async submitChallenge(
+    roomId: string,
+    odId: string,
+    notes: Note[],
+    similarity: number,
+    similarityDetails?: SimilarityDetails
+  ): Promise<void> {
     const challenge: Challenge = {
       odId,
       notes,
       submittedAt: Date.now(),
       similarity,
+      similarityDetails,
     };
     await set(this.getRef(`rooms/${roomId}/challenges/${odId}`), challenge);
   }
@@ -522,6 +542,32 @@ class FirebaseRealtimeService {
   // 합주 노트 정리 (오래된 노트 삭제)
   async clearOldEnsembleNotes(roomId: string): Promise<void> {
     await remove(this.getRef(`rooms/${roomId}/ensembleNotes`));
+  }
+
+  // 빈 방 정리 (플레이어 없거나 AI만 있는 방 삭제)
+  async cleanupEmptyRooms(): Promise<number> {
+    const roomsRef = this.getRef('rooms');
+    const snapshot = await get(roomsRef);
+    const rooms = snapshot.val() as Record<string, Room> | null;
+
+    if (!rooms) return 0;
+
+    let cleanedCount = 0;
+
+    for (const [roomId, room] of Object.entries(rooms)) {
+      const players = room.players || {};
+      const playerList = Object.values(players);
+
+      // 플레이어가 없거나 AI만 있는 경우
+      const realPlayers = playerList.filter((p) => !p.isAI);
+
+      if (playerList.length === 0 || realPlayers.length === 0) {
+        await remove(this.getRef(`rooms/${roomId}`));
+        cleanedCount++;
+      }
+    }
+
+    return cleanedCount;
   }
 }
 

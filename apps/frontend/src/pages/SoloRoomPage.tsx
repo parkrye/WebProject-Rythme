@@ -563,7 +563,11 @@ const SoloRoomPage: React.FC = () => {
 
       {/* 피아노 건반 */}
       <div className="mt-auto pt-4">
-        <PianoKeyboard onNotePress={handleNotePress} disabled={!isKeyboardEnabled} />
+        <PianoKeyboard
+          onNotePress={handleNotePress}
+          disabled={!isKeyboardEnabled}
+          instrument={instrument}
+        />
       </div>
 
       {/* 저장 모달 */}

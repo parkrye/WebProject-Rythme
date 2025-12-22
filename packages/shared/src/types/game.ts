@@ -27,6 +27,16 @@ export interface Challenge {
   notes: Note[];
   submittedAt: number;
   similarity: number;
+  similarityDetails?: SimilarityDetails;
+}
+
+export interface SimilarityDetails {
+  noteAccuracy: number;
+  noteSequence: number;
+  timingAccuracy: number;
+  instrumentMatch: number;
+  tempoConsistency: number;
+  noteCount: number;
 }
 
 export interface RoundResult {
@@ -34,6 +44,7 @@ export interface RoundResult {
   questionerId: string;
   winnerId: string | null;
   winnerSimilarity: number;
+  winnerSimilarityDetails?: SimilarityDetails;
   questionerScore: number;
   winnerScore: number;
   grade: ScoreGrade;

@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 
 declare const __BUILD_VERSION__: string;
 
-const VERSION_CHECK_INTERVAL = 30000; // 30초마다 체크
+const VERSION_CHECK_INTERVAL = 60000; // 60초마다 체크 (프로덕션)
+const IS_DEVELOPMENT = import.meta.env.DEV;
 
 interface VersionInfo {
   version: string;
@@ -30,6 +31,12 @@ export const useVersionCheck = () => {
   const currentVersion = useRef<string>(__BUILD_VERSION__);
 
   useEffect(() => {
+    // 개발 모드에서는 버전 체크 비활성화
+    if (IS_DEVELOPMENT) {
+      console.debug('개발 모드: 버전 체크 비활성화');
+      return;
+    }
+
     const checkVersion = async () => {
       try {
         // 캐시 무시하고 최신 version.json 가져오기
@@ -51,13 +58,13 @@ export const useVersionCheck = () => {
           await clearCacheAndReload();
         }
       } catch (error) {
-        // version.json을 가져올 수 없는 경우 무시 (개발 환경 등)
+        // version.json을 가져올 수 없는 경우 무시
         console.debug('버전 체크 실패:', error);
       }
     };
 
-    // 초기 체크 (3초 후)
-    const initialTimeout = setTimeout(checkVersion, 3000);
+    // 초기 체크 (5초 후)
+    const initialTimeout = setTimeout(checkVersion, 5000);
 
     // 주기적 체크
     const interval = setInterval(checkVersion, VERSION_CHECK_INTERVAL);

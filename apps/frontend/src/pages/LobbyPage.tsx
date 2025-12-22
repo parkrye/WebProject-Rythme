@@ -31,6 +31,18 @@ const LobbyPage: React.FC = () => {
   // Firebase Realtime으로 방 목록 실시간 구독
   useFirebaseRooms();
 
+  // 주기적으로 빈 방 정리 (30초마다)
+  useEffect(() => {
+    // 초기 정리
+    firebaseRealtimeService.cleanupEmptyRooms();
+
+    const cleanupInterval = setInterval(() => {
+      firebaseRealtimeService.cleanupEmptyRooms();
+    }, 30000);
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
+
   useEffect(() => {
     if (currentRoom) {
       navigate(`/room/${currentRoom.roomId}`);

@@ -15,8 +15,8 @@ export const usePiano = () => {
     []
   );
 
-  const handleNotePress = useCallback((note: string) => {
-    playNoteWithInstrument(note);
+  const handleNotePress = useCallback((note: string, instrument: InstrumentType = DEFAULT_INSTRUMENT) => {
+    playNoteWithInstrument(note, 0.5, instrument);
 
     if (!isRecording) return;
 

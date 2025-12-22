@@ -1,9 +1,10 @@
 import PianoKey from './PianoKey';
-import { WHITE_KEYS, BLACK_KEYS } from '@rhythm-game/shared';
+import { WHITE_KEYS, BLACK_KEYS, DEFAULT_INSTRUMENT, type InstrumentType } from '@rhythm-game/shared';
 
 interface PianoKeyboardProps {
   onNotePress: (note: string) => void;
   disabled?: boolean;
+  instrument?: InstrumentType;
 }
 
 const BLACK_KEY_POSITIONS: Record<string, number> = {
@@ -14,7 +15,11 @@ const BLACK_KEY_POSITIONS: Record<string, number> = {
   'A#4': 5,
 };
 
-const PianoKeyboard: React.FC<PianoKeyboardProps> = ({ onNotePress, disabled = false }) => {
+const PianoKeyboard: React.FC<PianoKeyboardProps> = ({
+  onNotePress,
+  disabled = false,
+  instrument = DEFAULT_INSTRUMENT,
+}) => {
   return (
     <div className="relative flex justify-center items-start p-4">
       {/* White Keys */}
@@ -26,6 +31,7 @@ const PianoKeyboard: React.FC<PianoKeyboardProps> = ({ onNotePress, disabled = f
             isBlack={false}
             onPress={onNotePress}
             disabled={disabled}
+            instrument={instrument}
           />
         ))}
       </div>
@@ -48,6 +54,7 @@ const PianoKeyboard: React.FC<PianoKeyboardProps> = ({ onNotePress, disabled = f
                 isBlack={true}
                 onPress={onNotePress}
                 disabled={disabled}
+                instrument={instrument}
               />
             </div>
           );

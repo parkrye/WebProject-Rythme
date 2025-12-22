@@ -20,6 +20,9 @@ import {
   ROOM_MODE_ICONS,
   ROOM_MODE_THEMES,
   DEFAULT_INSTRUMENT,
+  INSTRUMENTS,
+  INSTRUMENT_LABELS,
+  SIMILARITY_LABELS,
   type InstrumentType,
 } from '@rhythm-game/shared';
 
@@ -70,13 +73,17 @@ const GameRoomPage: React.FC = () => {
   const allReady = Object.values(players).every((p) => p.isReady || p.odId === currentRoom?.hostId);
 
   // 호스트 게임 로직 훅
-  const { handleStartGame: hostStartGame } = useHostGameLogic({
+  const { handleStartGame: hostStartGame, submitRecordingEarly } = useHostGameLogic({
     roomId: roomId || '',
     isHost,
   });
 
+  // 녹음 제출 완료 상태 (제출 버튼 표시용)
+  const [hasSubmittedRecording, setHasSubmittedRecording] = useState(false);
+
   const [isPlaying, setIsPlaying] = useState<'question' | 'winner' | null>(null);
-  const [instrument] = useState<InstrumentType>(DEFAULT_INSTRUMENT);
+  const [instrument, setInstrument] = useState<InstrumentType>(DEFAULT_INSTRUMENT);
+  const [showInstrumentPicker, setShowInstrumentPicker] = useState(false);
   const [lastPlayedNote, setLastPlayedNote] = useState<{ nickname: string; note: string } | null>(null);
   const stopPlaybackRef = useRef<(() => void) | null>(null);
 
@@ -202,8 +209,22 @@ const GameRoomPage: React.FC = () => {
     setIsRecording(false);
     if (roomId && odId && notes.length > 0) {
       await firebaseRealtimeService.submitRecording(roomId, odId, notes);
+      setHasSubmittedRecording(true);
     }
   }, [roomId, odId, stopRecording, setIsRecording]);
+
+  // 문제 제출 (녹음 차례 조기 종료)
+  const handleSubmitQuestion = useCallback(() => {
+    setHasSubmittedRecording(false);
+    submitRecordingEarly();
+  }, [submitRecordingEarly]);
+
+  // 페이즈 변경 시 제출 상태 리셋
+  useEffect(() => {
+    if (phase !== 'recording') {
+      setHasSubmittedRecording(false);
+    }
+  }, [phase]);
 
   const handleStartChallenge = useCallback(() => {
     clearChallengeNotes();
@@ -215,19 +236,19 @@ const GameRoomPage: React.FC = () => {
     const notes = stopChallenge();
     setIsRecording(false);
     if (roomId && odId && notes.length > 0) {
-      // 유사도 계산
+      // 유사도 계산 (악기 정보 포함)
       const questionNotesWithInstrument = questionNotes.map((n) => ({
         ...n,
         instrument: 'piano' as const,
       }));
       const challengeNotesWithInstrument = notes.map((n) => ({
         ...n,
-        instrument: 'piano' as const,
+        instrument: instrument,
       }));
       const result = calculateSimilarity(questionNotesWithInstrument, challengeNotesWithInstrument);
-      await firebaseRealtimeService.submitChallenge(roomId, odId, notes, result.total);
+      await firebaseRealtimeService.submitChallenge(roomId, odId, notes, result.total, result.details);
     }
-  }, [roomId, odId, questionNotes, stopChallenge, setIsRecording]);
+  }, [roomId, odId, questionNotes, instrument, stopChallenge, setIsRecording]);
 
   if (!currentRoom) {
     return null;
@@ -327,6 +348,94 @@ const GameRoomPage: React.FC = () => {
               유사도: {Math.round(roundResult.winnerSimilarity)}% ({roundResult.grade})
             </p>
           </div>
+
+          {/* 상세 점수 표시 (바 형태) */}
+          {roundResult.winnerId && roundResult.winnerSimilarityDetails && (
+            <div className="mb-4 p-3 bg-surface rounded-lg">
+              <p className="text-sm text-silver mb-3 text-center">상세 점수</p>
+              <div className="space-y-2">
+                {/* 음 정확도 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.NOTE_ACCURACY}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.noteAccuracy}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.noteAccuracy}%` }}
+                    />
+                  </div>
+                </div>
+                {/* 음 순서 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.NOTE_SEQUENCE}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.noteSequence}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-secondary transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.noteSequence}%` }}
+                    />
+                  </div>
+                </div>
+                {/* 타이밍 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.TIMING_ACCURACY}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.timingAccuracy}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-accent transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.timingAccuracy}%` }}
+                    />
+                  </div>
+                </div>
+                {/* 악기 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.INSTRUMENT_MATCH}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.instrumentMatch}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-warning transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.instrumentMatch}%` }}
+                    />
+                  </div>
+                </div>
+                {/* 템포 유지 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.TEMPO_CONSISTENCY}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.tempoConsistency}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-success transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.tempoConsistency}%` }}
+                    />
+                  </div>
+                </div>
+                {/* 음 개수 */}
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-silver">{SIMILARITY_LABELS.NOTE_COUNT}</span>
+                    <span className="text-primary">{roundResult.winnerSimilarityDetails.noteCount}%</span>
+                  </div>
+                  <div className="h-2 bg-background rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-error transition-all duration-500"
+                      style={{ width: `${roundResult.winnerSimilarityDetails.noteCount}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 justify-center">
             <Button
               variant={isPlaying === 'question' ? 'primary' : 'secondary'}
@@ -368,11 +477,48 @@ const GameRoomPage: React.FC = () => {
         </div>
       )}
 
+      {/* Instrument Picker */}
+      {(currentRoom.status === 'playing' || !isEnsembleMode) && (
+        <div className="px-4 py-2">
+          <div className="relative">
+            <button
+              onClick={() => setShowInstrumentPicker(!showInstrumentPicker)}
+              className="flex items-center gap-2 px-3 py-2 bg-surface rounded-lg text-sm"
+            >
+              <span className="text-silver">악기:</span>
+              <span className="text-primary font-medium">{INSTRUMENT_LABELS[instrument]}</span>
+              <span className="text-silver">{showInstrumentPicker ? '▲' : '▼'}</span>
+            </button>
+            {showInstrumentPicker && (
+              <div className="absolute bottom-full left-0 mb-1 bg-surface border border-silver/20 rounded-lg p-2 grid grid-cols-2 gap-1 z-10 min-w-[200px]">
+                {Object.entries(INSTRUMENTS).map(([key, value]) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      setInstrument(value as InstrumentType);
+                      setShowInstrumentPicker(false);
+                    }}
+                    className={`px-3 py-2 text-sm rounded ${
+                      instrument === value
+                        ? 'bg-primary text-background'
+                        : 'text-silver hover:bg-silver/10'
+                    }`}
+                  >
+                    {INSTRUMENT_LABELS[value as InstrumentType]}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Piano */}
       <div className="flex-1 flex flex-col justify-end">
         <PianoKeyboard
-          onNotePress={isEnsembleMode ? handleEnsembleNotePress : handleNotePress}
+          onNotePress={isEnsembleMode ? handleEnsembleNotePress : (note) => handleNotePress(note, instrument)}
           disabled={!canPlay}
+          instrument={instrument}
         />
       </div>
 
@@ -454,12 +600,23 @@ const GameRoomPage: React.FC = () => {
             )}
 
             {phase === 'recording' && isQuestioner && (
-              <Button
-                className="w-full"
-                onClick={isRecording ? handleStopRecording : handleStartRecording}
-              >
-                {isRecording ? `녹음 완료 (${recordedNotes.length}음)` : '녹음 시작'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={isRecording ? handleStopRecording : handleStartRecording}
+                  disabled={hasSubmittedRecording}
+                >
+                  {isRecording ? `녹음 완료 (${recordedNotes.length}음)` : hasSubmittedRecording ? '녹음 완료' : '녹음 시작'}
+                </Button>
+                {hasSubmittedRecording && (
+                  <Button
+                    variant="primary"
+                    onClick={handleSubmitQuestion}
+                  >
+                    문제 제출
+                  </Button>
+                )}
+              </div>
             )}
 
             {phase === 'challenging' && !isQuestioner && (
